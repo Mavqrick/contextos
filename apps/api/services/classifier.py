@@ -1,32 +1,28 @@
 from langchain_ollama import OllamaLLM
 import json
 
-llm = OllamaLLM(model="llama3.2")
+# Increased timeout to 60 seconds
+llm = OllamaLLM(model="llama3.2", timeout=60)
 
 def classify_item(content: str) -> dict:
-    prompt = f"""You are a classifier for a personal knowledge management system.
+    prompt = f"""Classify this input. Respond with ONLY a JSON object, nothing else.
 
-Classify this input into exactly one type:
-- "task": something the user needs to do
-- "insight": an idea, thought, or learning
-- "reference": a link, resource, or factual info
-- "goal_update": an update to the user's goals or projects
-
-Also extract 1-3 short tags (single words or short phrases).
+Types: "task", "insight", "reference", "goal_update"
 
 Input: "{content}"
 
-Respond with ONLY valid JSON, no explanation:
-{{"type": "insight", "tags": ["productivity", "focus"]}}"""
+JSON response:"""
 
-    response = llm.invoke(prompt)
-    
-    # Clean response and parse JSON
-    cleaned = response.strip()
-    # Find JSON in response
-    start = cleaned.find('{')
-    end = cleaned.rfind('}') + 1
-    json_str = cleaned[start:end]
-    
-    result = json.loads(json_str)
-    return result
+    try:
+        response = llm.invoke(prompt)
+        cleaned = response.strip()
+        start = cleaned.find('{')
+        end = cleaned.rfind('}') + 1
+        if start == -1:
+            raise ValueError("No JSON found")
+        json_str = cleaned[start:end]
+        result = json.loads(json_str)
+        return result
+    except Exception:
+        # Fallback if LLM fails or times out
+        return {"type": "insight", "tags": []}

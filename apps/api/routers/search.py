@@ -22,32 +22,29 @@ async def search_knowledge(
     limit: int = Query(default=5, le=20),
     db: AsyncSession = Depends(get_db)
 ):
-    # Embed the search query
     query_embedding = embed_text(q)
+    # Format as postgres vector literal
+    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
-    # Search using pgvector cosine similarity
-    results = await db.execute(
-        text("""
-            SELECT 
-                id::text,
-                content,
-                item_type,
-                tags,
-                source,
-                1 - (embedding <=> :query_vec::vector) as similarity
-            FROM knowledge_items
-            WHERE user_id = :user_id
-            ORDER BY embedding <=> :query_vec::vector
-            LIMIT :limit
-        """),
-        {
-            "query_vec": str(query_embedding),
-            "user_id": user_id,
-            "limit": limit
-        }
-    )
+    # Use literal query string with embedding inlined directly
+    # This avoids asyncpg parameter casting issues with vector type
+    sql = f"""
+        SELECT 
+            id::text,
+            content,
+            item_type,
+            tags,
+            source,
+            1 - (embedding <=> '{embedding_str}'::vector) as similarity
+        FROM knowledge_items
+        WHERE user_id = '{user_id}'::uuid
+        ORDER BY embedding <=> '{embedding_str}'::vector
+        LIMIT {limit}
+    """
 
+    results = await db.execute(text(sql))
     rows = results.fetchall()
+
     return [
         SearchResult(
             id=row.id,
