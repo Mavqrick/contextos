@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import capture, search, profile
+from routers import capture, search
 
 app = FastAPI(
     title="ContextOS API",
@@ -18,7 +18,6 @@ app.add_middleware(
 
 app.include_router(capture.router)
 app.include_router(search.router)
-app.include_router(profile.router)
 
 @app.get("/")
 async def root():
