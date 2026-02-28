@@ -21,6 +21,9 @@ class ProfileRequest(BaseModel):
     projects: list[Project] = []
     interests: list[str] = []
     working_style: str = ""
+    ai_persona: str = ""
+    thinking_mode: str = "balanced"
+    custom_context_blocks: list[str] = []
     user_id: str = "00000000-0000-0000-0000-000000000001"
 
 @router.get("/")
@@ -35,18 +38,25 @@ async def get_profile(
     row = result.fetchone()
 
     if not row:
-        return {"goals": [], "projects": [], "interests": [], "working_style": ""}
+        return {
+            "goals": [], "projects": [], "interests": [],
+            "working_style": "", "ai_persona": "",
+            "thinking_mode": "balanced", "custom_context_blocks": []
+        }
 
+    metadata = row.metadata or {}
     return {
         "goals": row.active_goals or [],
         "projects": row.active_projects or [],
         "interests": row.interests or [],
-        "working_style": row.working_style or ""
+        "working_style": row.working_style or "",
+        "ai_persona": metadata.get("ai_persona", ""),
+        "thinking_mode": metadata.get("thinking_mode", "balanced"),
+        "custom_context_blocks": metadata.get("custom_context_blocks", [])
     }
 
 @router.post("/")
 async def save_profile(payload: ProfileRequest, db: AsyncSession = Depends(get_db)):
-    # Check if profile exists
     result = await db.execute(
         text("SELECT id FROM context_profiles WHERE user_id = CAST(:user_id AS uuid)"),
         {"user_id": payload.user_id}
@@ -56,6 +66,13 @@ async def save_profile(payload: ProfileRequest, db: AsyncSession = Depends(get_d
     goals_json = [g.dict() for g in payload.goals]
     projects_json = [p.dict() for p in payload.projects]
 
+    import json
+    metadata = json.dumps({
+        "ai_persona": payload.ai_persona,
+        "thinking_mode": payload.thinking_mode,
+        "custom_context_blocks": payload.custom_context_blocks
+    })
+
     if existing:
         await db.execute(
             text("""
@@ -64,34 +81,39 @@ async def save_profile(payload: ProfileRequest, db: AsyncSession = Depends(get_d
                     active_projects = CAST(:projects AS jsonb),
                     interests = :interests,
                     working_style = :working_style,
+                    metadata = CAST(:metadata AS jsonb),
                     updated_at = NOW()
                 WHERE user_id = CAST(:user_id AS uuid)
             """),
             {
-                "goals": str(goals_json).replace("'", '"'),
-                "projects": str(projects_json).replace("'", '"'),
+                "goals": json.dumps(goals_json),
+                "projects": json.dumps(projects_json),
                 "interests": payload.interests,
                 "working_style": payload.working_style,
+                "metadata": metadata,
                 "user_id": payload.user_id
             }
         )
     else:
         await db.execute(
             text("""
-                INSERT INTO context_profiles (user_id, active_goals, active_projects, interests, working_style)
+                INSERT INTO context_profiles 
+                (user_id, active_goals, active_projects, interests, working_style, metadata)
                 VALUES (
                     CAST(:user_id AS uuid),
                     CAST(:goals AS jsonb),
                     CAST(:projects AS jsonb),
                     :interests,
-                    :working_style
+                    :working_style,
+                    CAST(:metadata AS jsonb)
                 )
             """),
             {
-                "goals": str(goals_json).replace("'", '"'),
-                "projects": str(projects_json).replace("'", '"'),
+                "goals": json.dumps(goals_json),
+                "projects": json.dumps(projects_json),
                 "interests": payload.interests,
                 "working_style": payload.working_style,
+                "metadata": metadata,
                 "user_id": payload.user_id
             }
         )
