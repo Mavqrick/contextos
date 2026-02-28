@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     redis_url: str
     secret_key: str
     ollama_base_url: str = "http://localhost:11434"
+    groq_api_key: str = ""
 
     class Config:
         env_file = ".env"
