@@ -1,12 +1,28 @@
+const API_URL = 'https://glorious-fishstick-p96qw6r567w26w4v-8000.app.github.dev';
+
 async function init() {
-  const data = await chrome.storage.local.get(['goals', 'projects', 'interests', 'isEnabled']);
-  if (!data.isEnabled && data.isEnabled !== undefined) return;
-  if (!data.goals?.length && !data.projects?.length) return;
-  setTimeout(() => showBadge(data), 2000);
+  try {
+    // First check local storage for API URL override
+    const stored = await chrome.storage.local.get(['apiUrl', 'isEnabled']);
+    if (!stored.isEnabled && stored.isEnabled !== undefined) return;
+    
+    const apiUrl = stored.apiUrl || API_URL;
+    
+    // Fetch profile from backend
+    const res = await fetch(`${apiUrl}/profile/`);
+    const profile = await res.json();
+    
+    if (!profile.goals?.length && !profile.projects?.length) return;
+    
+    setTimeout(() => showBadge(profile), 2000);
+  } catch (e) {
+    console.log('ContextOS: could not fetch profile', e);
+  }
 }
 
-function showBadge(data) {
+function showBadge(profile) {
   if (document.getElementById('cxos-badge')) return;
+  
   const badge = document.createElement('div');
   badge.id = 'cxos-badge';
   badge.innerHTML = `
@@ -19,30 +35,50 @@ function showBadge(data) {
       display: flex; align-items: center; gap: 8px;
     ">
       <span>⚙️</span>
-      <span><strong style="color:white">ContextOS</strong> — context ready</span>
-      <button onclick="document.getElementById('cxos-badge').remove()" style="
+      <span id="cxos-badge-text"><strong style="color:white">ContextOS</strong> — context ready</span>
+      <button id="cxos-close" style="
         background:none; border:none; color:#64748b; cursor:pointer;
         font-size:16px; padding:0; margin-left:4px;
       ">×</button>
     </div>
   `;
+
+  document.getElementById('cxos-close')?.addEventListener('click', () => {
+    badge.remove();
+  });
+
   badge.querySelector('div').addEventListener('click', async (e) => {
-    if (e.target.tagName === 'BUTTON') return;
-    const contextBlock = generateContext(data);
+    if (e.target.id === 'cxos-close') return;
+    const contextBlock = generateContext(profile);
     await navigator.clipboard.writeText(contextBlock);
-    badge.querySelector('span:nth-child(2)').innerHTML = '✓ <strong style="color:#4ade80">Context copied!</strong>';
+    document.getElementById('cxos-badge-text').innerHTML = '✓ <strong style="color:#4ade80">Context copied!</strong>';
     setTimeout(() => {
-      badge.querySelector('span:nth-child(2)').innerHTML = '<strong style="color:white">ContextOS</strong> — context ready';
+      document.getElementById('cxos-badge-text').innerHTML = '<strong style="color:white">ContextOS</strong> — context ready';
     }, 2000);
   });
+
   document.body.appendChild(badge);
 }
 
-function generateContext(data) {
-  const goals = data.goals || [];
-  const projects = data.projects || [];
-  const interests = data.interests || '';
-  return `## My Context (via ContextOS)\n\n**Active Goals:**\n${goals.map(g => `- ${g}`).join('\n') || '- None set'}\n\n**Current Projects:**\n${projects.map(p => `- ${p}`).join('\n') || '- None set'}\n\n**Focus Areas:** ${interests || 'Not set'}\n\nPlease use this context to personalize your responses.`;
+function generateContext(profile) {
+  const goals = profile.goals || [];
+  const projects = profile.projects || [];
+  const interests = profile.interests || [];
+  const workingStyle = profile.working_style || '';
+
+  return `## My Context (via ContextOS)
+
+**Active Goals:**
+${goals.map(g => `- ${g.title}${g.deadline ? ` (by ${g.deadline})` : ''}`).join('\n') || '- None set'}
+
+**Current Projects:**
+${projects.map(p => `- ${p.name} [${p.status}]`).join('\n') || '- None set'}
+
+**Focus Areas:** ${Array.isArray(interests) ? interests.join(', ') : interests || 'Not set'}
+
+**Working Style:** ${workingStyle || 'Not set'}
+
+Please use this context to personalize your responses.`;
 }
 
 init();

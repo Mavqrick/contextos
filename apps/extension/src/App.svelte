@@ -8,6 +8,7 @@
   let newGoal: string = '';
   let newProject: string = '';
   let saved: boolean = false;
+  let apiUrl: string = '';
 
   onMount(async () => {
     const data = await chrome.storage.local.get(['goals', 'projects', 'interests', 'isEnabled']);
@@ -15,12 +16,14 @@
     projects = data.projects || [];
     interests = data.interests || '';
     isEnabled = data.isEnabled !== false;
+    apiUrl = data.apiUrl || 'https://glorious-fishstick-p96qw6r567w26w4v-8000.app.github.dev';
   });
 
   async function save() {
-    await chrome.storage.local.set({ goals, projects, interests, isEnabled });
+    await chrome.storage.local.set({ goals, projects, interests, isEnabled, apiUrl });
     saved = true;
     setTimeout(() => saved = false, 2000);
+    
   }
 
   function addGoal() {
@@ -109,6 +112,11 @@ Please use this context to personalize your responses.`;
       <input class="full-input" bind:value={interests} placeholder="e.g. SaaS, productivity, AI..." />
     </div>
 
+    <div class="section">
+    <div class="label">🔗 API URL</div>
+      <input class="full-input" bind:value={apiUrl} placeholder="Your ContextOS API URL..." />
+    </div>
+    
     <div class="actions">
       <button class="copy-btn" on:click={copyContext}>
         📋 Copy Context Block
