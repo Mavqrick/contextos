@@ -19,6 +19,18 @@ async function init() {
 function showBadge(profile) {
   if (document.getElementById('cxos-badge')) return;
 
+  const modeLabels = {
+    deep_thinker: '🔭 Deep Thinker',
+    imaginative: '🌈 Imaginative',
+    realistic: '⚖️ Realistic',
+    focused: '🎯 Focused',
+    free_thinker: '🌊 Free Thinker',
+    custom: '✏️ Custom Mode',
+    balanced: ''
+  };
+
+  const modeLabel = modeLabels[profile.thinking_mode] || '';
+
   const badge = document.createElement('div');
   badge.id = 'cxos-badge';
   badge.innerHTML = `
@@ -33,38 +45,25 @@ function showBadge(profile) {
       <span>⚙️</span>
       <div style="flex:1">
         <div id="cxos-badge-text"><strong style="color:white">ContextOS</strong> — context ready</div>
-        <div style="font-size:11px; color:#475569; margin-top:2px" id="cxos-mode-label"></div>
+        ${modeLabel ? `<div style="font-size:11px; color:#475569; margin-top:2px">${modeLabel}</div>` : ''}
       </div>
       <button id="cxos-close" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:16px;padding:0;">×</button>
     </div>
   `;
 
-  // Show thinking mode label
-  const modeLabels = {
-    deep_thinker: '🔭 Deep Thinker',
-    imaginative: '🌈 Imaginative',
-    realistic: '⚖️ Realistic',
-    focused: '🎯 Focused',
-    free_thinker: '🌊 Free Thinker',
-    custom: '✏️ Custom Mode',
-    balanced: ''
-  };
-
-  const modeLabel = modeLabels[profile.thinking_mode] || '';
-  if (modeLabel) {
-    document.getElementById('cxos-mode-label').textContent = modeLabel;
-  }
-
-  document.getElementById('cxos-close').addEventListener('click', () => badge.remove());
+  document.getElementById('cxos-close')?.addEventListener('click', () => badge.remove());
 
   badge.querySelector('div').addEventListener('click', async (e) => {
     if (e.target.id === 'cxos-close') return;
     const contextBlock = generateContext(profile);
     await navigator.clipboard.writeText(contextBlock);
-    document.getElementById('cxos-badge-text').innerHTML = '✓ <strong style="color:#4ade80">Context copied!</strong>';
-    setTimeout(() => {
-      document.getElementById('cxos-badge-text').innerHTML = '<strong style="color:white">ContextOS</strong> — context ready';
-    }, 2000);
+    const badgeText = document.getElementById('cxos-badge-text');
+    if (badgeText) {
+      badgeText.innerHTML = '✓ <strong style="color:#4ade80">Context copied!</strong>';
+      setTimeout(() => {
+        badgeText.innerHTML = '<strong style="color:white">ContextOS</strong> — context ready';
+      }, 2000);
+    }
   });
 
   document.body.appendChild(badge);
