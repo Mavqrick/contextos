@@ -1,0 +1,25 @@
+Every time Codespaces restarts, run this in order:
+
+Terminal 1 — Backend
+cd /workspaces/contextos/apps/api
+source venv/bin/activate
+docker compose -f /workspaces/contextos/docker-compose.yml up -d
+ollama serve &
+python -m uvicorn main:app --reload --port 8000
+
+Terminal 2 — Frontend
+cd /workspaces/contextos/apps/web
+npm run dev
+
+Terminal 3 — Fix the API URL (changes every restart!)
+cat /workspaces/contextos/apps/web/.env.local
+Compare the URL there with the new port 8000 URL in the Ports tab. If they're different, update it:
+echo 'NEXT_PUBLIC_API_URL=https://YOUR-NEW-URL-8000.app.github.dev
+API_URL=https://YOUR-NEW-URL-8000.app.github.dev' > /workspaces/contextos/apps/web/.env.local
+Then restart the frontend (Ctrl+C in Terminal 2, then npm run dev again).
+
+Also make sure port 8000 is Public
+In the Ports tab, right-click port 8000 → Port Visibility → Public
+
+
+💡 Save this checklist somewhere — Notion, a sticky note, anywhere. You'll use it every session until we deploy to Railway where it runs 24/7 automatically.
