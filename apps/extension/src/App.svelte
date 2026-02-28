@@ -1,141 +1,94 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { getAllPresets, setActivePreset, generateContextBlock, type Preset } from './db';
 
-  let goals: string[] = [];
-  let projects: string[] = [];
-  let interests: string = '';
-  let isEnabled: boolean = true;
-  let newGoal: string = '';
-  let newProject: string = '';
-  let saved: boolean = false;
-  let apiUrl: string = '';
+  let presets: Preset[] = [];
+  let activePreset: Preset | null = null;
+  let copied = false;
+  let loading = true;
 
   onMount(async () => {
-    const data = await chrome.storage.local.get(['goals', 'projects', 'interests', 'isEnabled']);
-    goals = data.goals || [];
-    projects = data.projects || [];
-    interests = data.interests || '';
-    isEnabled = data.isEnabled !== false;
-    apiUrl = data.apiUrl || 'https://glorious-fishstick-p96qw6r567w26w4v-8000.app.github.dev';
+    presets = await getAllPresets();
+    activePreset = presets.find(p => p.is_active) || presets[0] || null;
+    loading = false;
   });
 
-  async function save() {
-    await chrome.storage.local.set({ goals, projects, interests, isEnabled, apiUrl });
-    saved = true;
-    setTimeout(() => saved = false, 2000);
-    
-  }
-
-  function addGoal() {
-    if (newGoal.trim()) {
-      goals = [...goals, newGoal.trim()];
-      newGoal = '';
-    }
-  }
-
-  function removeGoal(i: number) {
-    goals = goals.filter((_, idx) => idx !== i);
-  }
-
-  function addProject() {
-    if (newProject.trim()) {
-      projects = [...projects, newProject.trim()];
-      newProject = '';
-    }
-  }
-
-  function removeProject(i: number) {
-    projects = projects.filter((_, idx) => idx !== i);
-  }
-
-  function getContextBlock(): string {
-    return `## My Context (via ContextOS)
-
-**Active Goals:**
-${goals.map(g => `- ${g}`).join('\n') || '- None set'}
-
-**Current Projects:**
-${projects.map(p => `- ${p}`).join('\n') || '- None set'}
-
-**Focus Areas:** ${interests || 'Not set'}
-
-Please use this context to personalize your responses.`;
+  async function switchPreset(id: string) {
+    await setActivePreset(id);
+    presets = await getAllPresets();
+    activePreset = presets.find(p => p.is_active) || null;
   }
 
   async function copyContext() {
-    await navigator.clipboard.writeText(getContextBlock());
-    saved = true;
-    setTimeout(() => saved = false, 2000);
+    if (!activePreset) return;
+    await navigator.clipboard.writeText(generateContextBlock(activePreset));
+    copied = true;
+    setTimeout(() => copied = false, 2000);
+  }
+
+  function openPresets() {
+    chrome.tabs.create({ url: chrome.runtime.getURL('presets.html') });
   }
 </script>
 
 <main>
   <div class="header">
     <div class="logo">⚙️ ContextOS</div>
-    <label class="toggle">
-      <input type="checkbox" bind:checked={isEnabled} on:change={save} />
-      <span class="slider"></span>
-    </label>
+    <button class="manage-btn" on:click={openPresets}>Manage Presets →</button>
   </div>
 
-  {#if isEnabled}
-    <div class="section">
-      <div class="label">🎯 Active Goals</div>
-      {#each goals as goal, i}
-        <div class="tag">
-          {goal}
-          <button on:click={() => removeGoal(i)}>×</button>
-        </div>
-      {/each}
-      <div class="input-row">
-        <input bind:value={newGoal} placeholder="Add a goal..." on:keydown={(e) => e.key === 'Enter' && addGoal()} />
-        <button class="add-btn" on:click={addGoal}>+</button>
-      </div>
+  {#if loading}
+    <div class="loading">Loading...</div>
+
+  {:else if !activePreset}
+    <div class="empty">
+      <p>No presets yet.</p>
+      <button class="create-btn" on:click={openPresets}>+ Create your first preset</button>
     </div>
 
-    <div class="section">
-      <div class="label">📁 Current Projects</div>
-      {#each projects as project, i}
-        <div class="tag">
-          {project}
-          <button on:click={() => removeProject(i)}>×</button>
-        </div>
-      {/each}
-      <div class="input-row">
-        <input bind:value={newProject} placeholder="Add a project..." on:keydown={(e) => e.key === 'Enter' && addProject()} />
-        <button class="add-btn" on:click={addProject}>+</button>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="label">💡 Focus Areas</div>
-      <input class="full-input" bind:value={interests} placeholder="e.g. SaaS, productivity, AI..." />
-    </div>
-
-    <div class="section">
-    <div class="label">🔗 API URL</div>
-      <input class="full-input" bind:value={apiUrl} placeholder="Your ContextOS API URL..." />
-    </div>
-    
-    <div class="actions">
-      <button class="copy-btn" on:click={copyContext}>
-        📋 Copy Context Block
-      </button>
-      <button class="save-btn" on:click={save}>
-        {saved ? '✓ Saved!' : 'Save'}
-      </button>
-    </div>
   {:else}
-    <div class="disabled">
-      ContextOS is disabled on this page.
-      <br/>Enable the toggle to inject your context.
+    <!-- Active preset display -->
+    <div class="active-card">
+      <div class="active-label">ACTIVE PRESET</div>
+      <div class="active-title">
+        <span class="active-icon">{activePreset.icon}</span>
+        <span class="active-name">{activePreset.name}</span>
+      </div>
+      <div class="active-meta">
+        {#if activePreset.goals.length > 0}
+          <span>🎯 {activePreset.goals[0]}{activePreset.goals.length > 1 ? ` +${activePreset.goals.length - 1}` : ''}</span>
+        {/if}
+        {#if activePreset.thinking_mode && activePreset.thinking_mode !== 'balanced'}
+          <span>🧠 {activePreset.thinking_mode.replace('_', ' ')}</span>
+        {/if}
+      </div>
+      <button class="copy-btn {copied ? 'copied' : ''}" on:click={copyContext}>
+        {copied ? '✓ Context Copied!' : '📋 Copy Context Block'}
+      </button>
     </div>
+
+    <!-- Switch preset -->
+    {#if presets.length > 1}
+      <div class="switch-section">
+        <div class="switch-label">Switch Preset</div>
+        <div class="preset-pills">
+          {#each presets as preset}
+            <button
+              class="pill {preset.is_active ? 'active' : ''}"
+              on:click={() => switchPreset(preset.id)}
+            >
+              {preset.icon} {preset.name}
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
   {/if}
 </main>
 
 <style>
   main {
-    width: 320px;
+    width: 300px;
     background: #0f172a;
     color: #e2e8f0;
     font-family: -apple-system, sans-serif;
@@ -152,91 +105,76 @@ Please use this context to personalize your responses.`;
     border-bottom: 1px solid #1e293b;
   }
 
-  .logo {
-    font-weight: 700;
-    font-size: 15px;
-  }
+  .logo { font-weight: 700; font-size: 15px; }
 
-  .toggle input { display: none; }
-  .slider {
-    width: 36px; height: 20px;
-    background: #334155;
-    border-radius: 20px;
-    display: block;
-    cursor: pointer;
-    position: relative;
-    transition: background 0.2s;
+  .manage-btn {
+    background: none; border: none; color: #3b82f6;
+    cursor: pointer; font-size: 11px; font-weight: 600;
   }
-  .slider::after {
-    content: '';
-    position: absolute;
-    width: 14px; height: 14px;
-    background: white;
-    border-radius: 50%;
-    top: 3px; left: 3px;
-    transition: transform 0.2s;
-  }
-  input:checked + .slider { background: #3b82f6; }
-  input:checked + .slider::after { transform: translateX(16px); }
+  .manage-btn:hover { color: #60a5fa; }
 
-  .section { margin-bottom: 12px; }
-  .label { color: #94a3b8; font-size: 11px; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
+  .loading { color: #475569; text-align: center; padding: 20px; }
 
-  .tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    padding: 3px 8px;
-    margin: 2px;
-    font-size: 12px;
-  }
-  .tag button {
-    background: none; border: none; color: #64748b;
-    cursor: pointer; padding: 0; font-size: 14px; line-height: 1;
-  }
-  .tag button:hover { color: #ef4444; }
+  .empty { text-align: center; padding: 24px 12px; }
+  .empty p { color: #475569; margin-bottom: 12px; }
 
-  .input-row { display: flex; gap: 6px; margin-top: 6px; }
-  .input-row input, .full-input {
-    flex: 1;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 6px;
-    padding: 5px 8px;
-    color: #e2e8f0;
-    font-size: 12px;
-    outline: none;
-    width: 100%;
-  }
-  .input-row input:focus, .full-input:focus { border-color: #3b82f6; }
-
-  .add-btn {
-    background: #1e40af; color: white; border: none;
-    border-radius: 6px; width: 28px; cursor: pointer;
-    font-size: 16px; display: flex; align-items: center; justify-content: center;
-  }
-
-  .actions { display: flex; gap: 8px; margin-top: 12px; }
-
-  .copy-btn {
-    flex: 1; background: #1e293b; color: #93c5fd;
-    border: 1px solid #1e40af; border-radius: 8px;
-    padding: 8px; cursor: pointer; font-size: 12px; font-weight: 600;
-  }
-  .copy-btn:hover { background: #1e3a5f; }
-
-  .save-btn {
+  .create-btn {
     background: #1d4ed8; color: white; border: none;
     border-radius: 8px; padding: 8px 16px; cursor: pointer;
     font-size: 12px; font-weight: 600;
   }
-  .save-btn:hover { background: #2563eb; }
 
-  .disabled {
-    text-align: center; color: #64748b;
-    padding: 20px; line-height: 1.6;
+  .active-card {
+    background: #1e293b; border: 1px solid #1d4ed8;
+    border-radius: 10px; padding: 12px; margin-bottom: 10px;
+  }
+
+  .active-label {
+    font-size: 9px; font-weight: 700; color: #3b82f6;
+    letter-spacing: 1px; margin-bottom: 6px;
+  }
+
+  .active-title {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  }
+  .active-icon { font-size: 20px; }
+  .active-name { font-size: 15px; font-weight: 700; color: white; }
+
+  .active-meta {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-bottom: 10px;
+  }
+  .active-meta span {
+    font-size: 11px; color: #64748b;
+    background: #0f172a; padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  .copy-btn {
+    width: 100%; padding: 9px;
+    background: #1d4ed8; color: white; border: none;
+    border-radius: 8px; cursor: pointer;
+    font-size: 12px; font-weight: 600; transition: all 0.15s;
+  }
+  .copy-btn:hover { background: #2563eb; }
+  .copy-btn.copied { background: #166534; color: #4ade80; }
+
+  .switch-section { margin-top: 4px; }
+  .switch-label {
+    font-size: 10px; color: #475569; font-weight: 600;
+    text-transform: uppercase; margin-bottom: 6px;
+  }
+
+  .preset-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .pill {
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 20px; padding: 4px 10px;
+    color: #94a3b8; cursor: pointer; font-size: 11px;
+    transition: all 0.15s;
+  }
+  .pill:hover { border-color: #475569; color: white; }
+  .pill.active {
+    border-color: #3b82f6; background: #1e3a5f; color: #93c5fd;
   }
 </style>

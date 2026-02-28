@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ContextOS",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Inject your personal context into any AI tool",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
   "host_permissions": [
     "https://chat.openai.com/*",
     "https://claude.ai/*",
