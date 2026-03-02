@@ -5,15 +5,18 @@
     getSettings, saveSettings, generateOptimizedPrompt,
     generateContextBlock, type Preset, type Settings
   } from './db';
+  import { TEMPLATES, CATEGORIES, type Template } from './templates';
 
   let presets: Preset[] = [];
   let settings: Settings = { groq_api_key: '' };
   let showForm = false;
   let showSettings = false;
+  let showTemplates = false;
   let editingId: string | null = null;
   let generating = false;
   let generateError = '';
   let settingsSaved = false;
+  let selectedCategory = 'All';
 
   const THINKING_MODES = [
     { id: 'balanced', icon: '🧭', name: 'Balanced' },
@@ -32,7 +35,7 @@
     { id: 'researcher', icon: '🔬', name: 'Researcher', desc: 'Analysis & deep research' },
   ];
 
-  const PRESET_ICONS = ['🚀', '💡', '🎯', '📝', '🔭', '🌈', '⚡', '🧠', '💼', '🎨', '🔬', '⚙️'];
+  const PRESET_ICONS = ['🚀', '💡', '🎯', '📝', '🔭', '🌈', '⚡', '🧠', '💼', '🎨', '🔬', '⚙️', '📊', '🎓'];
 
   let form = emptyForm();
   let newGoal = '';
@@ -56,6 +59,13 @@
     settings = await getSettings();
   });
 
+  function useTemplate(template: Template) {
+    form = { ...template.preset };
+    showTemplates = false;
+    showForm = true;
+    editingId = null;
+  }
+
   async function activatePreset(id: string) {
     await setActivePreset(id);
     presets = await getAllPresets();
@@ -70,6 +80,7 @@
     editingId = preset.id;
     form = { ...preset };
     showForm = true;
+    showTemplates = false;
   }
 
   async function submitForm() {
@@ -125,14 +136,21 @@
       setTimeout(() => { if (btn) btn.textContent = '📋 Copy'; }, 2000);
     }
   }
+
+  function cancelForm() {
+    showForm = false;
+    showTemplates = false;
+    editingId = null;
+    form = emptyForm();
+  }
 </script>
 
 <main>
   <div class="header">
     <div class="logo">⚙️ ContextOS</div>
     <div class="header-actions">
-      <button class="icon-action" on:click={() => showSettings = !showSettings} title="Settings">⚙</button>
-      <button class="new-btn" on:click={() => { showForm = true; editingId = null; form = emptyForm(); }}>
+      <button class="icon-action" on:click={() => { showSettings = !showSettings; showForm = false; showTemplates = false; }} title="Settings">⚙</button>
+      <button class="new-btn" on:click={() => { showTemplates = true; showForm = false; showSettings = false; }}>
         + New Preset
       </button>
     </div>
@@ -142,19 +160,19 @@
   {#if showSettings}
     <div class="settings-panel">
       <div class="field">
-        <label>🔑 Groq API Key</label>
+        <div class="field-label">🔑 Groq API Key</div>
         <div class="groq-info">
           <span>✅ Free to use — 14,400 requests/day on free tier</span>
           <a href="https://console.groq.com/keys" target="_blank" class="groq-link">
-              Get your free API key →
+            Get your free API key →
           </a>
-         </div>
+        </div>
         <p class="hint">Stored locally on your device. Only sent directly to Groq for prompt optimization. Never touches ContextOS servers.</p>
         <input
-            type="password"
-            bind:value={settings.groq_api_key}
-            placeholder="gsk_..."
-            class="full-input"
+          type="password"
+          bind:value={settings.groq_api_key}
+          placeholder="gsk_..."
+          class="full-input"
         />
       </div>
       <button class="save-btn" on:click={saveSettingsHandler}>
@@ -163,16 +181,55 @@
     </div>
   {/if}
 
-  {#if showForm}
+  <!-- Template picker -->
+  {#if showTemplates}
+    <div class="templates-view">
+      <div class="templates-header">
+        <h3>Choose a Template</h3>
+        <button class="close-btn" on:click={() => showTemplates = false}>×</button>
+      </div>
+
+      <div class="category-pills">
+        {#each ['All', ...CATEGORIES] as cat}
+          <button
+            class="cat-pill {selectedCategory === cat ? 'active' : ''}"
+            on:click={() => selectedCategory = cat}
+          >
+            {cat}
+          </button>
+        {/each}
+      </div>
+
+      <div class="templates-grid">
+        {#each TEMPLATES.filter(t => selectedCategory === 'All' || t.category === selectedCategory) as template}
+          <button class="template-card" on:click={() => useTemplate(template)}>
+            <span class="template-icon">{template.icon}</span>
+            <span class="template-name">{template.name}</span>
+            <span class="template-desc">{template.description}</span>
+            <span class="template-cat">{template.category}</span>
+          </button>
+        {/each}
+
+        <button class="template-card blank" on:click={() => { showTemplates = false; showForm = true; editingId = null; form = emptyForm(); }}>
+          <span class="template-icon">✏️</span>
+          <span class="template-name">Start Blank</span>
+          <span class="template-desc">Build from scratch</span>
+          <span class="template-cat">Custom</span>
+        </button>
+      </div>
+    </div>
+
+  <!-- Preset form -->
+  {:else if showForm}
     <div class="form-card">
       <div class="form-header">
         <h3>{editingId ? 'Edit Preset' : 'New Preset'}</h3>
-        <button class="close-btn" on:click={() => { showForm = false; editingId = null; form = emptyForm(); }}>×</button>
+        <button class="close-btn" on:click={cancelForm}>×</button>
       </div>
 
       <!-- Preset Type -->
       <div class="field">
-        <label>Preset Type</label>
+        <div class="field-label">Preset Type</div>
         <div class="type-grid">
           {#each PRESET_TYPES as type}
             <button
@@ -189,7 +246,7 @@
 
       <!-- Name + Icon -->
       <div class="field">
-        <label>Name</label>
+        <div class="field-label">Name</div>
         <div class="row">
           <select bind:value={form.icon} class="icon-select">
             {#each PRESET_ICONS as icon}
@@ -202,7 +259,7 @@
 
       <!-- Goals -->
       <div class="field">
-        <label>Goals</label>
+        <div class="field-label">Goals</div>
         {#each form.goals as goal, i}
           <div class="tag-row">
             <span>{goal}</span>
@@ -222,28 +279,29 @@
           <div class="agent-label">⚡ Coding Agent Settings</div>
 
           <div class="field">
-            <label>Tech Stack</label>
+            <div class="field-label">Tech Stack</div>
             <input bind:value={form.tech_stack} placeholder="e.g. Next.js, FastAPI, PostgreSQL, Docker..." class="full-input" />
           </div>
 
           <div class="field">
-            <label>Current Task / Feature</label>
+            <div class="field-label">Current Task / Feature</div>
             <input bind:value={form.current_task} placeholder="e.g. Building presets manager with IndexedDB" class="full-input" />
           </div>
 
           <div class="field">
-            <label>Conventions & Preferences</label>
+            <div class="field-label">Conventions & Preferences</div>
             <textarea
               bind:value={form.conventions}
-              placeholder="e.g. Use Python scripts for all API calls. Always write tests. Prefer explicit over implicit. Use directives/ and execution/ folder structure."
+              placeholder="e.g. Use Python scripts for all API calls. Always write tests. Prefer explicit over implicit."
               class="textarea" rows="3"
             ></textarea>
           </div>
         </div>
+
       {:else}
         <!-- General fields -->
         <div class="field">
-          <label>Projects</label>
+          <div class="field-label">Projects</div>
           {#each form.projects as project, i}
             <div class="tag-row">
               <span>{project}</span>
@@ -258,18 +316,18 @@
         </div>
 
         <div class="field">
-          <label>Focus Areas</label>
+          <div class="field-label">Focus Areas</div>
           <input bind:value={form.interests} placeholder="e.g. SaaS, AI, productivity..." class="full-input" />
         </div>
 
         <div class="field">
-          <label>AI Persona</label>
+          <div class="field-label">AI Persona</div>
           <textarea bind:value={form.ai_persona} placeholder="e.g. You are a brutal startup advisor..." class="textarea" rows="2"></textarea>
         </div>
 
         <!-- Thinking Mode -->
         <div class="field">
-          <label>Thinking Mode</label>
+          <div class="field-label">Thinking Mode</div>
           <div class="mode-grid">
             {#each THINKING_MODES as mode}
               <button
@@ -288,13 +346,13 @@
       {/if}
 
       <div class="field">
-        <label>Working Style</label>
+        <div class="field-label">Working Style</div>
         <input bind:value={form.working_style} placeholder="e.g. Bullet points, concise, no preamble..." class="full-input" />
       </div>
 
       <!-- Custom context blocks -->
       <div class="field">
-        <label>Custom Context</label>
+        <div class="field-label">Custom Context</div>
         {#each form.custom_blocks as block, i}
           <div class="tag-row">
             <span>{block}</span>
@@ -308,7 +366,7 @@
         </div>
       </div>
 
-      <!-- AI Optimize button -->
+      <!-- AI Optimize -->
       <div class="optimize-section">
         <div class="optimize-header">
           <div>
@@ -347,7 +405,7 @@
       </div>
 
       <div class="form-actions">
-        <button class="cancel-btn" on:click={() => { showForm = false; editingId = null; form = emptyForm(); }}>Cancel</button>
+        <button class="cancel-btn" on:click={cancelForm}>Cancel</button>
         <button class="save-btn" on:click={submitForm} disabled={!form.name.trim()}>
           {editingId ? 'Update Preset' : 'Save Preset'}
         </button>
@@ -355,11 +413,13 @@
     </div>
 
   {:else}
+    <!-- Preset list -->
     {#if presets.length === 0}
       <div class="empty">
         <div class="empty-icon">🧠</div>
         <p>No presets yet.</p>
         <p class="empty-sub">Create your first context preset to get started.</p>
+        <button class="create-btn" on:click={() => showTemplates = true}>+ Create Preset</button>
       </div>
     {:else}
       <div class="presets-list">
@@ -451,13 +511,65 @@
     background: #1e293b; border: 1px solid #334155;
     border-radius: 10px; padding: 12px; margin-bottom: 12px;
   }
+  .groq-info {
+    display: flex; flex-direction: column; gap: 4px;
+    background: #0f2a1a; border: 1px solid #166534;
+    border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
+    font-size: 11px; color: #4ade80;
+  }
+  .groq-link {
+    color: #60a5fa; text-decoration: none; font-weight: 600; font-size: 11px;
+  }
+  .groq-link:hover { text-decoration: underline; }
   .hint { color: #475569; font-size: 11px; margin: 0 0 6px; }
 
-  /* Empty */
+  /* Templates */
+  .templates-view { }
+  .templates-header {
+    display: flex; justify-content: space-between;
+    align-items: center; margin-bottom: 12px;
+  }
+  .templates-header h3 { color: white; font-size: 14px; margin: 0; }
+
+  .category-pills {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
+  }
+  .cat-pill {
+    background: #1e293b; border: 1px solid #334155;
+    border-radius: 20px; padding: 4px 10px;
+    color: #94a3b8; cursor: pointer; font-size: 11px; transition: all 0.15s;
+  }
+  .cat-pill:hover { border-color: #475569; color: white; }
+  .cat-pill.active { border-color: #3b82f6; background: #1e3a5f; color: #93c5fd; }
+
+  .templates-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+  }
+  .template-card {
+    display: flex; flex-direction: column; align-items: flex-start;
+    gap: 3px; padding: 10px; border-radius: 10px;
+    border: 1px solid #334155; background: #1e293b;
+    cursor: pointer; text-align: left; transition: all 0.15s; width: 100%;
+  }
+  .template-card:hover { border-color: #3b82f6; background: #1e3a5f; }
+  .template-card.blank { border-style: dashed; }
+  .template-icon { font-size: 20px; }
+  .template-name { color: white; font-size: 12px; font-weight: 600; }
+  .template-desc { color: #475569; font-size: 10px; line-height: 1.4; }
+  .template-cat {
+    font-size: 9px; color: #334155; background: #0f172a;
+    padding: 1px 6px; border-radius: 10px; margin-top: 2px;
+  }
+
+  /* Empty state */
   .empty { text-align: center; padding: 40px 20px; color: #475569; }
   .empty-icon { font-size: 40px; margin-bottom: 12px; }
   .empty p { margin: 4px 0; }
   .empty-sub { font-size: 11px; color: #334155; }
+  .create-btn {
+    margin-top: 12px; background: #1d4ed8; color: white; border: none;
+    border-radius: 8px; padding: 8px 16px; cursor: pointer; font-size: 12px; font-weight: 600;
+  }
 
   /* Preset cards */
   .presets-list { display: flex; flex-direction: column; gap: 8px; }
@@ -511,7 +623,10 @@
   .close-btn { background: none; border: none; color: #64748b; cursor: pointer; font-size: 20px; }
 
   .field { margin-bottom: 12px; }
-  label { display: block; color: #94a3b8; font-size: 10px; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; }
+  .field-label {
+    display: block; color: #94a3b8; font-size: 10px;
+    font-weight: 600; text-transform: uppercase; margin-bottom: 5px;
+  }
 
   .type-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
   .type-btn {
@@ -535,11 +650,10 @@
   }
   input:focus, textarea:focus { border-color: #3b82f6; }
   .icon-select { width: 50px; flex-shrink: 0; padding: 6px 4px; }
-  .textarea { resize: none; font-family: inherit; }
   .full-input { width: 100%; }
+  .textarea { resize: none; font-family: inherit; }
   .mt-2 { margin-top: 6px; }
 
-  /* Coding agent section */
   .agent-section {
     background: #0f172a; border: 1px solid #1e40af;
     border-radius: 8px; padding: 10px; margin-bottom: 12px;
@@ -569,7 +683,6 @@
   .mode-btn:hover { border-color: #475569; color: white; }
   .mode-btn.active { border-color: #3b82f6; background: #1e3a5f; color: #93c5fd; }
 
-  /* Optimize section */
   .optimize-section {
     background: #0f172a; border: 1px solid #4c1d95;
     border-radius: 8px; padding: 10px; margin-bottom: 12px;
@@ -610,15 +723,4 @@
   }
   .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .save-btn:not(:disabled):hover { background: #2563eb; }
-
-  .groq-info {
-    display: flex; flex-direction: column; gap: 4px;
-    background: #0f2a1a; border: 1px solid #166534;
-    border-radius: 6px; padding: 8px 10px; margin-bottom: 6px;
-    font-size: 11px; color: #4ade80;
-  }
-  .groq-link {
-    color: #60a5fa; text-decoration: none; font-weight: 600; font-size: 11px;
-  }
-  .groq-link:hover { text-decoration: underline; }
 </style>

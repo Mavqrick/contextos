@@ -1,11 +1,37 @@
-async function getActivePreset() {
+const SITE_RULES = [
+  { patterns: ['github.com', 'gitlab.com', 'stackoverflow.com', 'replit.com', 'codesandbox.io'], preferred_type: 'coding_agent', icon: '⚡', label: 'Coding Agent' },
+  { patterns: ['notion.so', 'scholar.google.com', 'arxiv.org', 'pubmed.ncbi.nlm.nih.gov'], preferred_type: 'researcher', icon: '🔬', label: 'Research' },
+  { patterns: ['twitter.com', 'x.com', 'linkedin.com', 'medium.com', 'substack.com'], preferred_type: 'general', icon: '📝', label: 'Content' },
+  { patterns: ['figma.com', 'dribbble.com', 'framer.com'], preferred_type: 'general', icon: '🎨', label: 'Design' },
+];
+
+function getSiteRule() {
+  const hostname = window.location.hostname.replace('www.', '');
+  return SITE_RULES.find(rule =>
+    rule.patterns.some(p => hostname.includes(p))
+  ) || null;
+}
+
+async function getAllPresets() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['presets'], (data) => {
-      const presets = data.presets || [];
-      const active = presets.find(p => p.is_active) || presets[0] || null;
-      resolve(active);
+      resolve(data.presets || []);
     });
   });
+}
+
+async function getActivePreset() {
+  const presets = await getAllPresets();
+  return presets.find(p => p.is_active) || presets[0] || null;
+}
+
+async function setActivePreset(id) {
+  const presets = await getAllPresets();
+  await new Promise(resolve =>
+    chrome.storage.local.set({
+      presets: presets.map(p => ({ ...p, is_active: p.id === id }))
+    }, resolve)
+  );
 }
 
 function generateContext(preset) {
@@ -49,14 +75,69 @@ ${preset.custom_blocks?.length > 0 ? `\n**Additional Context:**\n${preset.custom
 Please use all of the above to personalize every response.`;
 }
 
-async function init() {
-  try {
-    const preset = await getActivePreset();
-    if (!preset) return;
-    setTimeout(() => showBadge(preset), 2000);
-  } catch (e) {
-    console.log('ContextOS:', e);
-  }
+function showSwitchSuggestion(presets, rule) {
+  if (document.getElementById('cxos-suggest')) return;
+
+  const matchingPresets = presets.filter(p => p.preset_type === rule.preferred_type);
+  if (matchingPresets.length === 0) return;
+
+  const suggest = document.createElement('div');
+  suggest.id = 'cxos-suggest';
+  suggest.innerHTML = `
+    <div style="
+      position: fixed; bottom: 80px; right: 20px; z-index: 999998;
+      background: #1e293b; border: 1px solid #f59e0b;
+      border-radius: 10px; padding: 10px 14px;
+      font-family: -apple-system, sans-serif; font-size: 12px;
+      color: #fbbf24; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      max-width: 260px;
+    ">
+      <div style="font-weight:700; margin-bottom:6px;">
+        ${rule.icon} Better preset available
+      </div>
+      <div style="color:#94a3b8; font-size:11px; margin-bottom:8px;">
+        You have a ${rule.label} preset that matches this site
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        ${matchingPresets.slice(0, 2).map(p => `
+          <button id="cxos-switch-${p.id}" style="
+            background:#1d4ed8; color:white; border:none;
+            border-radius:6px; padding:4px 8px; cursor:pointer;
+            font-size:11px; font-weight:600;
+          ">${p.icon} ${p.name}</button>
+        `).join('')}
+        <button id="cxos-suggest-dismiss" style="
+          background:none; color:#475569; border:none;
+          cursor:pointer; font-size:11px; padding:4px;
+        ">Dismiss</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(suggest);
+
+  // Switch preset buttons
+  matchingPresets.slice(0, 2).forEach(p => {
+    const btn = document.getElementById(`cxos-switch-${p.id}`);
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        await setActivePreset(p.id);
+        suggest.remove();
+        const badge = document.getElementById('cxos-badge');
+        if (badge) badge.remove();
+        const newPreset = { ...p, is_active: true };
+        showBadge(newPreset);
+      });
+    }
+  });
+
+  // Dismiss
+  document.getElementById('cxos-suggest-dismiss')?.addEventListener('click', () => {
+    suggest.remove();
+  });
+
+  // Auto dismiss after 8 seconds
+  setTimeout(() => suggest.remove(), 8000);
 }
 
 function showBadge(preset) {
@@ -108,6 +189,29 @@ function showBadge(preset) {
   });
 
   document.body.appendChild(badge);
+}
+
+async function init() {
+  try {
+    const preset = await getActivePreset();
+    if (!preset) return;
+
+    setTimeout(async () => {
+      showBadge(preset);
+
+      // Smart suggestion — check if a better preset exists for this site
+      const rule = getSiteRule();
+      if (rule && rule.preferred_type !== preset.preset_type) {
+        const allPresets = await getAllPresets();
+        const hasMatch = allPresets.some(p => p.preset_type === rule.preferred_type);
+        if (hasMatch) {
+          setTimeout(() => showSwitchSuggestion(allPresets, rule), 3000);
+        }
+      }
+    }, 2000);
+  } catch (e) {
+    console.log('ContextOS:', e);
+  }
 }
 
 init();
