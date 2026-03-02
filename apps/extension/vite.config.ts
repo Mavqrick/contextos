@@ -15,16 +15,19 @@ export default defineConfig({
     }
   ],
   build: {
-    target: 'es2015',
+    target: 'esnext',
     minify: false,
+    cssCodeSplit: false,
     rollupOptions: {
       input: {
         main: 'index.html',
         presets: 'presets.html',
       },
       output: {
-        entryFileNames: 'assets/[name]-[hash].js',
         format: 'es',
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        manualChunks: undefined,
       }
     }
   }
