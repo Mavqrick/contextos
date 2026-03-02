@@ -1,135 +1,183 @@
 'use client';
 import { useState } from 'react';
-import { captureItem } from '@/lib/api';
-
-interface CaptureResult {
-  id: string;
-  type: string;
-  tags: string[];
-  message: string;
-}
-
-const TYPE_COLORS: Record<string, string> = {
-  insight: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  task: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  reference: 'bg-green-500/20 text-green-300 border-green-500/30',
-  goal_update: 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-};
-
-const TYPE_ICONS: Record<string, string> = {
-  insight: '💡',
-  task: '✅',
-  reference: '📎',
-  goal_update: '🎯',
-};
 
 export default function CapturePage() {
   const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<CaptureResult | null>(null);
-  const [error, setError] = useState('');
-  const [history, setHistory] = useState<CaptureResult[]>([]);
+  const [source, setSource] = useState('');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [result, setResult] = useState<any>(null);
 
-  const handleCapture = async () => {
+  const CATEGORY_COLORS: Record<string, string> = {
+    goal: '#3b82f6',
+    project: '#8b5cf6',
+    interest: '#10b981',
+    skill: '#f59e0b',
+    note: '#64748b',
+    insight: '#06b6d4',
+  };
+
+  async function handleCapture() {
     if (!content.trim()) return;
-    setLoading(true);
-    setError('');
-    setResult(null);
-
+    setStatus('loading');
     try {
-      const data = await captureItem(content);
+      const res = await fetch('/api/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, source, user_id: 'test-user' }),
+      });
+      const data = await res.json();
       setResult(data);
-      setHistory(prev => [data, ...prev]);
+      setStatus('success');
       setContent('');
-    } catch (err) {
-      setError('Failed to capture. Is the API running?');
-    } finally {
-      setLoading(false);
+      setSource('');
+    } catch {
+      setStatus('error');
     }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      handleCapture();
-    }
-  };
+  }
 
   return (
-    <div className="max-w-2xl">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold text-white">✏️ Capture</h2>
-        <p className="text-gray-400 mt-1">Drop a thought. ContextOS handles the rest.</p>
+    <div className="animate-fade-in" style={{ maxWidth: '720px' }}>
+
+      {/* Header */}
+      <div style={{ marginBottom: '32px' }}>
+        <div className="pill" style={{ marginBottom: '12px', display: 'inline-flex' }}>
+          <span className="pill-dot-blue"></span>
+          Knowledge Capture
+        </div>
+        <h1 style={{
+          fontSize: '32px', fontWeight: '800',
+          color: '#f8fafc', letterSpacing: '-0.03em', lineHeight: 1.1,
+        }}>
+          Capture
+          <span style={{
+            background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          }}> Knowledge</span>
+        </h1>
+        <p style={{ color: '#64748b', marginTop: '8px', fontSize: '14px' }}>
+          Save ideas, goals, insights — AI classifies and stores them for instant context retrieval.
+        </p>
       </div>
 
-      {/* Input */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+      {/* Main capture card */}
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div style={{ fontSize: '11px', color: '#475569', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+          What's on your mind?
+        </div>
         <textarea
+          className="input"
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="What's on your mind? A task, an idea, a link, a goal update..."
-          className="w-full bg-transparent text-white placeholder-gray-600 resize-none outline-none text-base leading-relaxed"
-          rows={4}
+          onChange={e => setContent(e.target.value)}
+          placeholder="e.g. I want to launch ContextOS to 100 users by end of March..."
+          rows={5}
+          style={{ marginBottom: '12px', fontSize: '14px', lineHeight: '1.6' }}
         />
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-800">
-          <span className="text-gray-600 text-xs">Ctrl+Enter to capture</span>
+        <input
+          className="input"
+          value={source}
+          onChange={e => setSource(e.target.value)}
+          placeholder="Source (optional) — e.g. book, conversation, idea..."
+          style={{ marginBottom: '16px' }}
+        />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: '12px', color: '#475569' }}>
+            AI will auto-classify into: goal, project, interest, skill, insight
+          </div>
           <button
+            className="btn-primary"
             onClick={handleCapture}
-            disabled={loading || !content.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors"
+            disabled={status === 'loading' || !content.trim()}
+            style={{ opacity: status === 'loading' || !content.trim() ? 0.5 : 1 }}
           >
-            {loading ? '🤔 Thinking...' : '⚡ Capture'}
+            {status === 'loading' ? '⏳ Capturing...' : '⊕ Capture'}
           </button>
         </div>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="bg-red-900/20 border border-red-800 rounded-lg p-3 mb-4 text-red-400 text-sm">
-          {error}
-        </div>
-      )}
-
       {/* Result */}
-      {result && (
-        <div className="bg-green-900/20 border border-green-800 rounded-xl p-4 mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-green-400 font-medium">✓ Captured!</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full border ${TYPE_COLORS[result.type] || TYPE_COLORS.insight}`}>
-              {TYPE_ICONS[result.type]} {result.type}
-            </span>
+      {status === 'success' && result && (
+        <div className="card animate-fade-in" style={{
+          background: 'linear-gradient(135deg, #064e3b 0%, #0d1526 100%)',
+          border: '1px solid rgba(16,185,129,0.2)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+            <div className="pill">
+              <span className="pill-dot"></span>
+              Captured Successfully
+            </div>
+            {result.category && (
+              <div className="pill" style={{
+                background: `${CATEGORY_COLORS[result.category] || '#3b82f6'}20`,
+                border: `1px solid ${CATEGORY_COLORS[result.category] || '#3b82f6'}40`,
+                color: CATEGORY_COLORS[result.category] || '#3b82f6',
+              }}>
+                {result.category}
+              </div>
+            )}
           </div>
-          {result.tags.length > 0 && (
-            <div className="flex gap-2 flex-wrap">
-              {result.tags.map(tag => (
-                <span key={tag} className="text-xs text-gray-400 bg-gray-800 px-2 py-0.5 rounded-full">
-                  #{tag}
-                </span>
+
+          {result.summary && (
+            <div>
+              <div style={{ fontSize: '11px', color: '#475569', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '6px' }}>
+                AI Summary
+              </div>
+              <p style={{ fontSize: '14px', color: '#cbd5e1', lineHeight: '1.6' }}>{result.summary}</p>
+            </div>
+          )}
+
+          {result.tags && result.tags.length > 0 && (
+            <div style={{ marginTop: '12px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {result.tags.map((tag: string) => (
+                <span key={tag} style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '6px', padding: '3px 8px',
+                  fontSize: '11px', color: '#94a3b8',
+                }}>#{tag}</span>
               ))}
             </div>
           )}
         </div>
       )}
 
-      {/* History */}
-      {history.length > 0 && (
-        <div>
-          <h3 className="text-sm font-medium text-gray-500 mb-3">This session</h3>
-          <div className="space-y-2">
-            {history.map((item) => (
-              <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center gap-3">
-                <span>{TYPE_ICONS[item.type] || '💡'}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${TYPE_COLORS[item.type] || TYPE_COLORS.insight}`}>
-                  {item.type}
-                </span>
-                {item.tags.map(tag => (
-                  <span key={tag} className="text-xs text-gray-500">#{tag}</span>
-                ))}
-              </div>
-            ))}
+      {status === 'error' && (
+        <div className="card animate-fade-in" style={{
+          background: 'linear-gradient(135deg, #450a0a 0%, #0d1526 100%)',
+          border: '1px solid rgba(239,68,68,0.2)',
+        }}>
+          <div style={{ color: '#fca5a5', fontSize: '14px' }}>
+            ❌ Capture failed. Make sure the API is running on port 8000.
           </div>
         </div>
       )}
+
+      {/* Tips */}
+      <div style={{ marginTop: '24px' }}>
+        <div style={{ fontSize: '11px', color: '#475569', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '12px' }}>
+          What to capture
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+          {[
+            { label: 'Goals', desc: 'What you want to achieve', icon: '🎯', color: '#3b82f6' },
+            { label: 'Projects', desc: 'What you\'re working on', icon: '🚀', color: '#8b5cf6' },
+            { label: 'Insights', desc: 'Things you\'ve learned', icon: '💡', color: '#f59e0b' },
+            { label: 'Skills', desc: 'What you\'re learning', icon: '⚡', color: '#10b981' },
+            { label: 'Interests', desc: 'What excites you', icon: '🌊', color: '#06b6d4' },
+            { label: 'Notes', desc: 'Anything worth saving', icon: '📝', color: '#64748b' },
+          ].map(tip => (
+            <div key={tip.label} style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '10px', padding: '12px',
+            }}>
+              <div style={{ fontSize: '18px', marginBottom: '6px' }}>{tip.icon}</div>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: tip.color, marginBottom: '3px' }}>{tip.label}</div>
+              <div style={{ fontSize: '11px', color: '#475569' }}>{tip.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
