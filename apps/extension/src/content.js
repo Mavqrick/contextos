@@ -1,36 +1,24 @@
-async function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('contextos', 1);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('presets')) {
-        db.createObjectStore('presets', { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
 async function getActivePreset() {
-  const db = await openDB();
   return new Promise((resolve) => {
-    const req = db.transaction('presets', 'readonly').objectStore('presets').getAll();
-    req.onsuccess = () => {
-      const all = req.result || [];
-      resolve(all.find(p => p.is_active) || all[0] || null);
-    };
-    req.onerror = () => resolve(null);
+    chrome.storage.local.get(['presets'], (data) => {
+      const presets = data.presets || [];
+      const active = presets.find(p => p.is_active) || presets[0] || null;
+      resolve(active);
+    });
   });
 }
 
 function generateContext(preset) {
+  if (preset.optimized_prompt && preset.use_optimized) {
+    return `## My Context (via ContextOS) — ${preset.name}\n\n${preset.optimized_prompt}`;
+  }
+
   const THINKING_PROMPTS = {
     deep_thinker: 'Before answering, reason through the problem step by step. Show your thinking process. Challenge assumptions.',
     imaginative: 'Think expansively and creatively. Explore wild possibilities. There are no wrong ideas.',
-    realistic: 'Be grounded and evidence-based. Call out wishful thinking. Be brutally honest.',
+    realistic: 'Be grounded and evidence-based. Call out wishful thinking directly. Be brutally honest.',
     focused: 'Be extremely concise. One idea per response. Maximum signal, minimum noise.',
-    free_thinker: 'Think freely without constraints. Connect seemingly unrelated ideas. Surprise me.',
+    free_thinker: 'Think freely without constraints. Connect seemingly unrelated ideas.',
     balanced: '',
     custom: preset.custom_mode_prompt || ''
   };
