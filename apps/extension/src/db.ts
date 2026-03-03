@@ -21,6 +21,7 @@ export interface Preset {
   use_optimized: boolean;
   created_at: number;
   is_active: boolean;
+  prd_content: string;
 }
 
 export interface Settings {
@@ -80,7 +81,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 export async function generateOptimizedPrompt(preset: Preset, groqApiKey: string): Promise<string> {
   const isCodingAgent = preset.preset_type === 'coding_agent';
-
+  
   const systemPrompt = isCodingAgent
     ? `You are a prompt architect specializing in AI coding agents.
 Given a developer's project details, generate a customized 3-layer agent architecture prompt adapted to their specific stack, project, and conventions.
@@ -182,6 +183,7 @@ Working Style: ${preset.working_style}
 AI Persona: ${preset.ai_persona}
 Thinking Mode: ${preset.thinking_mode}
 Custom Context: ${preset.custom_blocks.join(', ')}
+${preset.prd_content ? `\nPRD Document (excerpt):\n${preset.prd_content.slice(0, 2000)}` : ''}
 
 Generate an optimized system prompt for this context.`;
 
@@ -201,7 +203,7 @@ Generate an optimized system prompt for this context.`;
       max_tokens: 1500
     })
   });
-
+  
   const data = await response.json();
   return data.choices[0].message.content.trim();
 }
@@ -243,6 +245,6 @@ ${preset.projects.map(p => `- ${p}`).join('\n') || '- None set'}
 ${preset.ai_persona ? `\n**Your Role:** ${preset.ai_persona}` : ''}
 ${modePrompt ? `\n**Thinking Mode — ${modeNames[preset.thinking_mode]}:**\n${modePrompt}` : ''}
 ${preset.custom_blocks?.length > 0 ? `\n**Additional Context:**\n${preset.custom_blocks.map(b => `- ${b}`).join('\n')}` : ''}
-
+${preset.prd_content ? `\n**Product Requirements Document:**\n${preset.prd_content.slice(0, 3000)}${preset.prd_content.length > 3000 ? '\n\n[PRD truncated for context — full document available]' : ''}` : ''}
 Please use all of the above to personalize every response.`;
 }

@@ -12,12 +12,21 @@
   let showForm = false;
   let showSettings = false;
   let showTemplates = false;
+  let showImport = false;
   let editingId: string | null = null;
   let generating = false;
   let generateError = '';
   let settingsSaved = false;
   let selectedCategory = 'All';
   let copied: string | null = null;
+
+  // Import state
+  let importTab: 'paste' | 'file' = 'paste';
+  let importText = '';
+  let importName = '';
+  let importFileName = '';
+  let importError = '';
+  let importSuccess = false;
 
   const THINKING_MODES = [
     { id: 'balanced', icon: '🧭', name: 'Balanced' },
@@ -32,7 +41,7 @@
   const PRESET_TYPES = [
     { id: 'general', icon: '🚀', name: 'General', desc: 'Standard AI chat context', color: '#3b82f6' },
     { id: 'coding_agent', icon: '⚡', name: 'Coding Agent', desc: '3-layer architecture', color: '#8b5cf6' },
-    { id: 'founder', icon: '💼', name: 'Founder', desc: 'Startup decisions', color: '#f59e0b' },
+    { id: 'founder', icon: '💼', name: 'Founder', desc: 'Startup decisions + PRD', color: '#f59e0b' },
     { id: 'researcher', icon: '🔬', name: 'Researcher', desc: 'Deep research mode', color: '#10b981' },
   ];
 
@@ -51,7 +60,8 @@
       thinking_mode: 'balanced', custom_mode_prompt: '',
       custom_blocks: [], tech_stack: '',
       current_task: '', conventions: '',
-      optimized_prompt: '', optimized_at: 0, use_optimized: false
+      optimized_prompt: '', optimized_at: 0, use_optimized: false,
+      prd_content: '',
     };
   }
 
@@ -61,7 +71,7 @@
   });
 
   function useTemplate(template: Template) {
-    form = { ...template.preset };
+    form = { ...emptyForm(), ...template.preset };
     showTemplates = false;
     showForm = true;
     editingId = null;
@@ -82,6 +92,7 @@
     form = { ...preset };
     showForm = true;
     showTemplates = false;
+    showImport = false;
   }
 
   async function submitForm() {
@@ -129,8 +140,81 @@
   function cancelForm() {
     showForm = false;
     showTemplates = false;
+    showImport = false;
     editingId = null;
     form = emptyForm();
+  }
+
+  function handlePRDUpload(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { form.prd_content = (ev.target?.result as string) || ''; };
+    reader.readAsText(file);
+  }
+
+  // Import feature
+  function openImport() {
+    showImport = true;
+    showForm = false;
+    showTemplates = false;
+    showSettings = false;
+    importTab = 'paste';
+    importText = '';
+    importName = '';
+    importFileName = '';
+    importError = '';
+    importSuccess = false;
+  }
+
+  function handleImportFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    importFileName = file.name.replace(/\.(txt|md)$/, '');
+    importName = importFileName;
+    const reader = new FileReader();
+    reader.onload = (ev) => { importText = (ev.target?.result as string) || ''; };
+    reader.readAsText(file);
+  }
+
+  function guessNameFromPrompt(text: string): string {
+    const firstLine = text.split('\n')[0].trim();
+    // Remove common prompt prefixes
+    const cleaned = firstLine
+      .replace(/^(you are|act as|your role is|system:|##|#)/i, '')
+      .replace(/[^a-zA-Z0-9 ]/g, '')
+      .trim();
+    return cleaned.slice(0, 40) || 'Imported Prompt';
+  }
+
+  async function handleImportSave() {
+    if (!importText.trim()) { importError = 'No prompt content to import.'; return; }
+    importError = '';
+    const name = importName.trim() || guessNameFromPrompt(importText);
+    const preset: Preset = {
+      ...emptyForm(),
+      id: crypto.randomUUID(),
+      name,
+      icon: '📝',
+      preset_type: 'general',
+      optimized_prompt: importText.trim(),
+      use_optimized: true,
+      optimized_at: Date.now(),
+      created_at: Date.now(),
+      is_active: presets.length === 0,
+    };
+    await savePreset(preset);
+    presets = await getAllPresets();
+    importSuccess = true;
+    importText = '';
+    importName = '';
+    importFileName = '';
+    setTimeout(() => {
+      importSuccess = false;
+      showImport = false;
+    }, 1500);
   }
 </script>
 
@@ -157,15 +241,19 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="icon-btn-sm" on:click={() => { showSettings = !showSettings; showForm = false; showTemplates = false; }} title="Settings">⚙</button>
-      <button class="new-btn" on:click={() => { showTemplates = true; showForm = false; showSettings = false; }}>+ New</button>
+      <button class="icon-btn-sm" title="Import Prompt" on:click={openImport}>⬆</button>
+      <button class="icon-btn-sm" on:click={() => { showSettings = !showSettings; showForm = false; showTemplates = false; showImport = false; }} title="Settings">⚙</button>
+      <button class="new-btn" on:click={() => { showTemplates = true; showForm = false; showSettings = false; showImport = false; }}>+ New</button>
     </div>
   </div>
 
   <!-- Settings -->
   {#if showSettings}
     <div class="panel animate-in">
-      <div class="panel-title">Settings</div>
+      <div class="panel-header">
+        <div class="panel-title">Settings</div>
+        <button class="close-btn" on:click={() => showSettings = false}>×</button>
+      </div>
       <div class="field">
         <div class="field-label">🔑 Groq API Key</div>
         <div class="groq-info">
@@ -178,6 +266,107 @@
       <button class="save-btn" on:click={saveSettingsHandler}>
         {settingsSaved ? '✓ Saved!' : 'Save Settings'}
       </button>
+    </div>
+  {/if}
+
+  <!-- Import panel -->
+  {#if showImport}
+    <div class="panel animate-in">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Import Prompt</div>
+          <div class="panel-sub">Turn any saved prompt into a preset card</div>
+        </div>
+        <button class="close-btn" on:click={() => showImport = false}>×</button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="import-tabs">
+        <button class="import-tab {importTab === 'paste' ? 'active' : ''}" on:click={() => { importTab = 'paste'; importText = ''; importFileName = ''; }}>
+          Paste Text
+        </button>
+        <button class="import-tab {importTab === 'file' ? 'active' : ''}" on:click={() => { importTab = 'file'; importText = ''; importFileName = ''; }}>
+          Upload File
+        </button>
+      </div>
+
+      {#if importTab === 'paste'}
+        <div class="field">
+          <div class="field-label">Prompt Content</div>
+          <textarea
+            class="textarea"
+            bind:value={importText}
+            placeholder="Paste your saved prompt here...&#10;&#10;e.g. You are a senior full stack engineer. You prioritize clean architecture..."
+            rows="6"
+          ></textarea>
+        </div>
+      {:else}
+        <div class="field">
+          <div class="field-label">Upload Prompt File</div>
+          {#if importFileName}
+            <div class="prd-loaded">
+              <div class="prd-info">
+                <span class="prd-icon">📄</span>
+                <div>
+                  <div class="prd-name">{importFileName}</div>
+                  <div class="prd-meta">{importText.length.toLocaleString()} characters loaded</div>
+                </div>
+              </div>
+              <button class="prd-remove" on:click={() => { importText = ''; importFileName = ''; importName = ''; }}>Remove</button>
+            </div>
+          {:else}
+            <label class="prd-dropzone">
+              <input type="file" accept=".md,.txt" style="display:none" on:change={handleImportFile} />
+              <span class="prd-upload-icon">⬆</span>
+              <span class="prd-upload-label">Upload Prompt File</span>
+              <span class="prd-upload-sub">.md or .txt files only</span>
+            </label>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Preview auto-name -->
+      {#if importText.trim()}
+        <div class="field">
+          <div class="field-label">Preset Name</div>
+          <input
+            class="input"
+            bind:value={importName}
+            placeholder={guessNameFromPrompt(importText)}
+          />
+          <div class="import-hint">Leave blank to auto-detect from first line</div>
+        </div>
+
+        <div class="import-preview">
+          <div class="import-preview-label">Preview</div>
+          <div class="import-preview-card">
+            <span style="font-size: 18px;">📝</span>
+            <div>
+              <div class="import-preview-name">{importName.trim() || guessNameFromPrompt(importText)}</div>
+              <div class="import-preview-meta">
+                <span style="color: #3b82f6;">general</span>
+                <span class="opt-tag">✨ Optimized</span>
+              </div>
+            </div>
+          </div>
+          <pre class="import-preview-text">{importText.trim().slice(0, 200)}{importText.trim().length > 200 ? '...' : ''}</pre>
+        </div>
+      {/if}
+
+      {#if importError}
+        <div class="error-msg" style="margin-bottom: 8px;">{importError}</div>
+      {/if}
+
+      {#if importSuccess}
+        <div class="success-msg animate-in">✓ Preset created successfully!</div>
+      {:else}
+        <div class="form-actions">
+          <button class="cancel-btn" on:click={() => showImport = false}>Cancel</button>
+          <button class="save-btn flex2" on:click={handleImportSave} disabled={!importText.trim()}>
+            Import as Preset
+          </button>
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -217,7 +406,6 @@
         <button class="close-btn" on:click={cancelForm}>×</button>
       </div>
 
-      <!-- Type selector -->
       <div class="field">
         <div class="field-label">Preset Type</div>
         <div class="type-grid">
@@ -233,7 +421,6 @@
         </div>
       </div>
 
-      <!-- Name + Icon -->
       <div class="field">
         <div class="field-label">Name</div>
         <div class="row">
@@ -244,7 +431,6 @@
         </div>
       </div>
 
-      <!-- Goals -->
       <div class="field">
         <div class="field-label">Goals</div>
         {#each form.goals as goal, i}
@@ -260,7 +446,6 @@
         </div>
       </div>
 
-      <!-- Coding agent fields -->
       {#if form.preset_type === 'coding_agent'}
         <div class="agent-section">
           <div class="agent-label">⚡ Coding Agent Settings</div>
@@ -292,6 +477,36 @@
             <button class="add-btn" on:click={() => { if (newProject.trim()) { form.projects = [...form.projects, newProject.trim()]; newProject = ''; }}}>+</button>
           </div>
         </div>
+
+        {#if form.preset_type === 'founder'}
+          <div class="field">
+            <div class="field-label">📄 PRD Document</div>
+            <div class="prd-upload">
+              {#if form.prd_content}
+                <div class="prd-loaded">
+                  <div class="prd-info">
+                    <span class="prd-icon">📄</span>
+                    <div>
+                      <div class="prd-name">PRD loaded</div>
+                      <div class="prd-meta">
+                        {form.prd_content.length.toLocaleString()} characters
+                        {form.prd_content.length > 3000 ? ' · truncated to 3,000 in context' : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <button class="prd-remove" on:click={() => form.prd_content = ''}>Remove</button>
+                </div>
+              {:else}
+                <label class="prd-dropzone">
+                  <input type="file" accept=".md,.txt" style="display:none" on:change={handlePRDUpload} />
+                  <span class="prd-upload-icon">⬆</span>
+                  <span class="prd-upload-label">Upload PRD</span>
+                  <span class="prd-upload-sub">.md or .txt files only</span>
+                </label>
+              {/if}
+            </div>
+          </div>
+        {/if}
 
         <div class="field">
           <div class="field-label">Focus Areas</div>
@@ -341,12 +556,15 @@
         </div>
       </div>
 
-      <!-- Optimize -->
       <div class="optimize-section">
         <div class="optimize-header">
           <div>
             <div class="optimize-title">✨ AI Prompt Architect</div>
-            <div class="optimize-desc">Groq rewrites your context into an optimized system prompt</div>
+            <div class="optimize-desc">
+              {form.preset_type === 'coding_agent'
+                ? 'Groq generates a customized 3-layer agent architecture'
+                : 'Groq rewrites your context into an optimized system prompt'}
+            </div>
           </div>
           <button class="generate-btn" on:click={handleGenerate} disabled={generating || !form.name.trim()}>
             {generating ? '⏳' : '✨ Generate'}
@@ -375,14 +593,17 @@
       </div>
     </div>
 
-  {:else}
+  {:else if !showImport}
     <!-- Preset list -->
     {#if presets.length === 0}
       <div class="empty">
         <div class="empty-icon">◈</div>
         <div class="empty-title">No presets yet</div>
-        <div class="empty-sub">Create your first context preset</div>
-        <button class="create-btn" on:click={() => showTemplates = true}>+ Create Preset</button>
+        <div class="empty-sub">Create from a template or import an existing prompt</div>
+        <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+          <button class="create-btn" on:click={() => showTemplates = true}>+ New Preset</button>
+          <button class="import-btn-empty" on:click={openImport}>⬆ Import Prompt</button>
+        </div>
       </div>
     {:else}
       <div class="presets-list">
@@ -400,6 +621,9 @@
                     <span style="color: {PRESET_TYPES.find(t => t.id === preset.preset_type)?.color || '#3b82f6'}; text-transform: capitalize;">
                       {preset.preset_type.replace('_', ' ')}
                     </span>
+                    {#if preset.prd_content}
+                      <span class="prd-tag">📄 PRD</span>
+                    {/if}
                     {#if preset.use_optimized && preset.optimized_prompt}
                       <span class="opt-tag">✨</span>
                     {/if}
@@ -447,13 +671,8 @@
   :global(::-webkit-scrollbar-thumb) { background: rgba(255,255,255,0.1); border-radius: 3px; }
 
   main {
-    width: 420px;
-    max-height: 680px;
-    overflow-y: auto;
-    background: #080b12;
-    color: #f8fafc;
-    font-size: 13px;
-    padding: 14px;
+    width: 420px; max-height: 680px; overflow-y: auto;
+    background: #080b12; color: #f8fafc; font-size: 13px; padding: 14px;
   }
 
   @keyframes fadeIn {
@@ -462,12 +681,9 @@
   }
   .animate-in { animation: fadeIn 0.2s ease; }
 
-  /* Header */
   .header {
     display: flex; justify-content: space-between; align-items: center;
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-    margin-bottom: 14px;
+    padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 14px;
   }
   .logo-row { display: flex; align-items: center; gap: 8px; }
   .wordmark {
@@ -483,8 +699,9 @@
     background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
     color: #64748b; border-radius: 6px; width: 26px; height: 26px; cursor: pointer;
     font-size: 13px; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
   }
-  .icon-btn-sm:hover { color: white; }
+  .icon-btn-sm:hover { color: white; border-color: rgba(255,255,255,0.2); }
 
   .new-btn {
     background: linear-gradient(135deg, #1d4ed8 0%, #4f46e5 100%);
@@ -493,14 +710,45 @@
     box-shadow: 0 0 16px rgba(59,130,246,0.2);
   }
 
-  /* Panel */
   .panel {
     background: #0d1526; border: 1px solid rgba(255,255,255,0.07);
     border-radius: 14px; padding: 14px; margin-bottom: 12px;
   }
-  .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .panel-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
   .panel-title { color: white; font-size: 13px; font-weight: 700; }
+  .panel-sub { color: #475569; font-size: 11px; margin-top: 2px; }
   .close-btn { background: none; border: none; color: #64748b; cursor: pointer; font-size: 18px; }
+
+  /* Import tabs */
+  .import-tabs { display: flex; gap: 4px; margin-bottom: 14px; background: rgba(255,255,255,0.03); border-radius: 8px; padding: 3px; }
+  .import-tab {
+    flex: 1; padding: 6px; border: none; border-radius: 6px;
+    font-size: 11px; font-weight: 600; cursor: pointer;
+    background: transparent; color: #64748b; transition: all 0.15s;
+  }
+  .import-tab.active { background: rgba(59,130,246,0.15); color: #93c5fd; }
+  .import-tab:hover:not(.active) { color: white; }
+
+  .import-hint { font-size: 10px; color: #475569; margin-top: 4px; }
+
+  .import-preview {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 10px; margin-bottom: 12px;
+  }
+  .import-preview-label { font-size: 10px; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .import-preview-card { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .import-preview-name { font-size: 12px; font-weight: 600; color: white; }
+  .import-preview-meta { font-size: 10px; color: #475569; margin-top: 2px; display: flex; gap: 5px; align-items: center; }
+  .import-preview-text {
+    font-size: 10px; color: #475569; white-space: pre-wrap;
+    font-family: monospace; line-height: 1.5; max-height: 80px; overflow: hidden;
+  }
+
+  .success-msg {
+    background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2);
+    border-radius: 8px; padding: 10px 14px; color: #4ade80;
+    font-size: 13px; font-weight: 600; text-align: center;
+  }
 
   /* Settings */
   .groq-info {
@@ -536,7 +784,7 @@
   .t-name { color: white; font-size: 11px; font-weight: 600; }
   .t-desc { color: #475569; font-size: 10px; }
 
-  /* Form */
+  /* Form fields */
   .field { margin-bottom: 12px; }
   .field-label {
     display: block; color: #475569; font-size: 10px;
@@ -550,7 +798,6 @@
     background: rgba(255,255,255,0.03); cursor: pointer; text-align: left; transition: all 0.15s;
   }
   .type-btn:hover { border-color: rgba(255,255,255,0.15); }
-  .type-btn.active { border-color: rgba(59,130,246,0.4); }
   .type-name { color: white; font-size: 11px; font-weight: 600; }
   .type-desc { color: #475569; font-size: 10px; }
 
@@ -561,8 +808,7 @@
   .input, .textarea, .icon-select {
     background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
     border-radius: 8px; padding: 7px 10px; color: #f8fafc; font-size: 12px;
-    outline: none; width: 100%; transition: border-color 0.2s;
-    font-family: inherit;
+    outline: none; width: 100%; transition: border-color 0.2s; font-family: inherit;
   }
   .input:focus, .textarea:focus { border-color: rgba(59,130,246,0.5); box-shadow: 0 0 0 3px rgba(59,130,246,0.08); }
   .input::placeholder, .textarea::placeholder { color: #475569; }
@@ -575,6 +821,34 @@
     border-radius: 10px; padding: 10px; margin-bottom: 12px;
   }
   .agent-label { color: #a78bfa; font-size: 11px; font-weight: 700; margin-bottom: 10px; }
+
+  /* PRD Upload */
+  .prd-upload { margin-top: 4px; }
+  .prd-dropzone {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px; padding: 16px; border-radius: 8px;
+    border: 1px dashed rgba(245,158,11,0.3); background: rgba(245,158,11,0.05);
+    cursor: pointer; transition: all 0.15s; text-align: center;
+  }
+  .prd-dropzone:hover { border-color: rgba(245,158,11,0.6); background: rgba(245,158,11,0.08); }
+  .prd-upload-icon { font-size: 18px; color: #f59e0b; }
+  .prd-upload-label { font-size: 12px; font-weight: 600; color: #f59e0b; }
+  .prd-upload-sub { font-size: 10px; color: #475569; }
+  .prd-loaded {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-radius: 8px;
+    background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2);
+  }
+  .prd-info { display: flex; align-items: center; gap: 8px; }
+  .prd-icon { font-size: 18px; }
+  .prd-name { font-size: 12px; font-weight: 600; color: #fbbf24; }
+  .prd-meta { font-size: 10px; color: #475569; margin-top: 1px; }
+  .prd-remove {
+    background: none; border: 1px solid rgba(239,68,68,0.2);
+    color: #f87171; border-radius: 6px; padding: 3px 8px; font-size: 10px; cursor: pointer;
+  }
+  .prd-remove:hover { background: rgba(239,68,68,0.1); }
+  .prd-tag { font-size: 10px; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); border-radius: 4px; padding: 1px 5px; }
 
   .tag-row {
     display: flex; justify-content: space-between; align-items: center;
@@ -593,8 +867,7 @@
   .mode-btn {
     display: flex; flex-direction: column; align-items: center; gap: 2px;
     padding: 6px 4px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.07);
-    background: rgba(255,255,255,0.03); cursor: pointer; color: #64748b; font-size: 10px;
-    transition: all 0.15s;
+    background: rgba(255,255,255,0.03); cursor: pointer; color: #64748b; font-size: 10px; transition: all 0.15s;
   }
   .mode-btn span:first-child { font-size: 13px; }
   .mode-btn:hover { border-color: rgba(255,255,255,0.15); color: white; }
@@ -623,21 +896,18 @@
   .preview-text {
     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
     border-radius: 6px; padding: 8px; font-size: 10px; color: #64748b;
-    white-space: pre-wrap; max-height: 120px; overflow-y: auto;
-    font-family: 'JetBrains Mono', monospace; margin: 0;
+    white-space: pre-wrap; max-height: 120px; overflow-y: auto; font-family: monospace; margin: 0;
   }
 
   .form-actions { display: flex; gap: 8px; margin-top: 12px; }
   .cancel-btn {
     flex: 1; background: rgba(255,255,255,0.04); color: #64748b;
-    border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
-    padding: 8px; cursor: pointer; font-size: 12px;
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px; cursor: pointer; font-size: 12px;
   }
   .save-btn {
     background: linear-gradient(135deg, #1d4ed8 0%, #4f46e5 100%);
-    color: white; border: none; border-radius: 8px;
-    padding: 8px; cursor: pointer; font-size: 12px; font-weight: 600;
-    box-shadow: 0 0 16px rgba(59,130,246,0.2);
+    color: white; border: none; border-radius: 8px; padding: 8px; cursor: pointer;
+    font-size: 12px; font-weight: 600; box-shadow: 0 0 16px rgba(59,130,246,0.2);
   }
   .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
@@ -645,8 +915,7 @@
   .presets-list { display: flex; flex-direction: column; gap: 8px; }
   .preset-card {
     background: #0d1526; border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 12px; padding: 12px; position: relative; overflow: hidden;
-    transition: border-color 0.2s;
+    border-radius: 12px; padding: 12px; position: relative; overflow: hidden; transition: border-color 0.2s;
   }
   .preset-card:hover { border-color: rgba(255,255,255,0.12); }
   .preset-card.active { border-color: rgba(59,130,246,0.3); background: linear-gradient(135deg, #0d1f3c 0%, #0d1526 100%); }
@@ -660,7 +929,7 @@
   .preset-id { display: flex; align-items: center; gap: 8px; flex: 1; }
   .p-icon { font-size: 20px; }
   .p-name { font-weight: 600; color: white; font-size: 13px; }
-  .p-meta { font-size: 10px; color: #475569; margin-top: 2px; display: flex; align-items: center; gap: 5px; text-transform: capitalize; }
+  .p-meta { font-size: 10px; color: #475569; margin-top: 2px; display: flex; align-items: center; gap: 5px; }
   .opt-tag { color: #a78bfa; }
   .active-tag {
     font-size: 9px; font-weight: 700; background: rgba(59,130,246,0.15);
@@ -669,8 +938,7 @@
   .p-actions { display: flex; gap: 3px; }
   .p-btn {
     background: none; border: none; cursor: pointer;
-    padding: 3px 5px; border-radius: 5px; font-size: 11px; color: #64748b;
-    transition: all 0.15s;
+    padding: 3px 5px; border-radius: 5px; font-size: 11px; color: #64748b; transition: all 0.15s;
   }
   .p-btn:hover { background: rgba(255,255,255,0.07); color: white; }
   .p-btn.del:hover { background: rgba(239,68,68,0.1); color: #f87171; }
@@ -681,8 +949,7 @@
   .activate-btn {
     width: 100%; background: rgba(255,255,255,0.04); color: #64748b;
     border: 1px solid rgba(255,255,255,0.07); border-radius: 7px;
-    padding: 5px; cursor: pointer; font-size: 11px; font-weight: 500;
-    transition: all 0.15s;
+    padding: 5px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.15s;
   }
   .activate-btn:hover { background: rgba(59,130,246,0.1); color: #93c5fd; border-color: rgba(59,130,246,0.2); }
 
@@ -697,4 +964,10 @@
     padding: 8px 20px; cursor: pointer; font-size: 12px; font-weight: 600;
     box-shadow: 0 0 16px rgba(59,130,246,0.2);
   }
+  .import-btn-empty {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    color: #94a3b8; border-radius: 10px; padding: 8px 20px;
+    cursor: pointer; font-size: 12px; font-weight: 600;
+  }
+  .import-btn-empty:hover { color: white; border-color: rgba(255,255,255,0.2); }
 </style>
