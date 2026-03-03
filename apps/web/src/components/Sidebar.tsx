@@ -4,11 +4,8 @@ import { usePathname } from 'next/navigation';
 import Logo from './Logo';
 
 const navItems = [
-  { href: '/', label: 'Dashboard', icon: '⬡' },
-  { href: '/capture', label: 'Capture', icon: '⊕' },
-  { href: '/search', label: 'Search', icon: '⊙' },
-  { href: '/presets', label: 'Presets', icon: '◈' },
-  { href: '/profile', label: 'Profile', icon: '◎' },
+  { href: '/dashboard', label: 'Dashboard', icon: '⬡' },
+  { href: '/dashboard/presets', label: 'Presets', icon: '◈' },
 ];
 
 export default function Sidebar() {
