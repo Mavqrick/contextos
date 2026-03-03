@@ -17,7 +17,7 @@ A Chrome extension that lets you create context presets — your goals, projects
 Coming soon to Chrome Web Store.
 
 Manual install:
-1. Download the latest zip from Releases
+1. Download the latest contextos-extension.zip from Releases
 2. Go to `chrome://extensions`
 3. Enable Developer Mode
 4. Click "Load unpacked" → select the `dist` folder
